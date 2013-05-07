@@ -813,23 +813,52 @@ def old_tag_length(data, start):
     return (offset, length)
 
 
-def construct_packet(data, start):
+def construct_packet(data, header_start):
     '''Returns a (length, packet) tuple constructed from 'data' at index
-    'start'. If there is a next packet, it will be found at start + length.'''
-    tag = data[start] & 0x3f
-    new = bool(data[start] & 0x40)
+    'header_start'. If there is a next packet, it will be found at header_start + length.'''
+
+    # Tag encoded in Bits 5-0 (new packet format)
+    tag = data[header_start] & 0x3f # 0x3f == 111111b
+
+    # The header is in new format if Bit 7 is set
+    new = bool(data[header_start] & 0x40) # 0x40 == 1000000b
+
+    # new format
     if new:
-        data_offset, length, partial = new_tag_length(data, start + 1)
+        # In the new format the length is encoded in the second (and following) octet
+        data_offset, data_length, partial = new_tag_length(data, header_start + 1)
+    # old format
     else:
+        # old format encodes the tag in Bits 5-2, discard Bits 1-0
         tag >>= 2
-        data_offset, length = old_tag_length(data, start)
+        data_offset, data_length = old_tag_length(data, header_start)
         partial = False
-    data_offset += 1
-    start += data_offset
+
     name, PacketType = TAG_TYPES.get(tag, ("Unknown", None))
-    end = start + length
-    packet_data = data[start:end]
+    # Packet type not yet handled
     if not PacketType:
         PacketType = Packet
+
+    # first octect of the packet header handled
+    data_offset += 1
+
+    # data consumed to create new packet, consists of header and data data_length
+    consumed = 0
+    packet_data = bytearray()
+    while (True):
+        consumed += data_offset
+
+        data_start = header_start + data_offset
+        header_start = data_start + data_length
+        packet_data += data[data_start:header_start]
+        consumed += data_length
+
+        # The new format might encode data with Partial Body Length headers
+        # Then a packet consistes of alternating header and data regions. The
+        # last header of a packet is not a Partial Body Length header.
+        if partial:
+            data_offset, data_length, partial = new_tag_length(data, header_start)
+        else:
+            break
     packet = PacketType(tag, name, new, packet_data)
-    return (data_offset + length, packet)
+    return (consumed, packet)
