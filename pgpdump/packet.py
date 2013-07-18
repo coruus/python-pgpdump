@@ -9,12 +9,13 @@ from .utils import (PgpdumpException, get_int2, get_int4, get_mpi,
 class Packet(object):
     '''The base packet object containing various fields pulled from the packet
     header as well as a slice of the packet data.'''
-    def __init__(self, raw, name, new, data):
+    def __init__(self, raw, name, new, data, raw_data):
         self.raw = raw
         self.name = name
         self.new = new
         self.length = len(data)
         self.data = data
+        self.raw_data = raw_data
 
         # now let subclasses work their magic
         self.parse()
@@ -817,6 +818,7 @@ def construct_packet(data, header_start):
     '''Returns a (length, packet) tuple constructed from 'data' at index
     'header_start'. If there is a next packet, it will be found at header_start + length.'''
 
+    orig_start = header_start
     # Tag encoded in Bits 5-0 (new packet format)
     tag = data[header_start] & 0x3f # 0x3f == 111111b
 
@@ -860,5 +862,5 @@ def construct_packet(data, header_start):
             data_offset, data_length, partial = new_tag_length(data, header_start)
         else:
             break
-    packet = PacketType(tag, name, new, packet_data)
+    packet = PacketType(tag, name, new, packet_data, data[orig_start:orig_start+consumed])
     return (consumed, packet)

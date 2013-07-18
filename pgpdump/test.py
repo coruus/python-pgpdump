@@ -427,6 +427,10 @@ class EncryptedPacketsTestCase(TestCase, Helper):
         data = BinaryData(rawdata)
         packets = list(data.packets())
         self.assertEqual(2, len(packets))
+        combined_raw_data = ""
+        for p in packets:
+            combined_raw_data += p.raw_data
+        self.assertEqual(rawdata, combined_raw_data)
 
 
 class PacketTestCase(TestCase):
