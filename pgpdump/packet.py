@@ -3,12 +3,17 @@ import hashlib
 import re
 
 from .utils import (PgpdumpException, get_int2, get_int4, get_mpi,
-        get_key_id, get_hex_data, get_int_bytes)
+                    get_M, get_key_id, get_hex_data, get_int_bytes)
 
 
 class Packet(object):
-    '''The base packet object containing various fields pulled from the packet
-    header as well as a slice of the packet data.'''
+
+    """An OpenPGP packet.
+
+    The base packet class containing various fields pulled from the packet
+    header as well as a slice of the packet data.
+    """
+
     def __init__(self, raw, name, new, data, raw_data):
         self.raw = raw
         self.name = name
@@ -21,9 +26,13 @@ class Packet(object):
         self.parse()
 
     def parse(self):
-        '''Perform any parsing necessary to populate fields on this packet.
+        """Parse a packet.
+
+        Populates the fields on this packet.
+
         This method is called as the last step in __init__(). The base class
-        method is a no-op; subclasses should use this as required.'''
+        method is a no-op; subclasses should use this as required.
+        """
         return 0
 
     def __repr__(self):
@@ -42,7 +51,7 @@ class AlgoLookup(object):
         3:  "RSA Sign-Only",
         16: "ElGamal Encrypt-Only",
         17: "DSA Digital Signature Algorithm",
-        18: "Elliptic Curve",
+        18: "ECDH",
         19: "ECDSA",
         20: "Formerly ElGamal Encrypt or Sign",
         21: "Diffie-Hellman",
@@ -90,6 +99,7 @@ class AlgoLookup(object):
         12: ("Camellia with 192-bit key", 16),
         13: ("Camellia with 256-bit key", 16),
     }
+
 
     @classmethod
     def _lookup_sym_algorithm(cls, alg):
@@ -335,6 +345,12 @@ class PublicKeyPacket(Packet, AlgoLookup):
         self.group_order = None
         self.group_gen = None
         self.key_value = None
+
+        # ECC and ECDH
+        self.raw_curve_B = None
+        self.point_x = None
+        self.point_y = None
+
         super(PublicKeyPacket, self).__init__(*args, **kwargs)
 
     def parse(self):
@@ -417,6 +433,15 @@ class PublicKeyPacket(Packet, AlgoLookup):
             self.prime, offset = get_mpi(self.data, offset)
             self.group_gen, offset = get_mpi(self.data, offset)
             self.key_value, offset = get_mpi(self.data, offset)
+        elif self.raw_pub_algorithm in (18, 19):
+            oid_len = self.data[offset]
+            offset += 1
+            self.raw_curve_oid = self.data[offset:offset + oid_len]
+            self.curve_oid =
+            offset += oid_len
+            self.curve_size, (self.curve_x, self.curve_y), offset = \
+                get_M(self.data, offset)
+            # TODO(dlg): support the additional parameters for ECDH keys
         elif 100 <= self.raw_pub_algorithm <= 110:
             # Private/Experimental algorithms, just move on
             pass

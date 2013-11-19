@@ -100,6 +100,26 @@ def get_mpi(data, offset):
     return mpi, offset
 
 
+def get_M(data, offset):
+    """Gets a point on an elliptic curve stored as an MPI.
+
+       Returns the curve size, x, and y.
+
+       See RFC 6637 for the gory details.
+    """
+    mpi_len = get_int2(data, offset)
+    if data[offset + 2] != 4:
+        raise Exception()
+    mpi, offset = get_mpi(data, offset)
+    coord_bits = (mpi_len - 1) // 2
+    bitmask = long('1' * coord_bits, base=2)
+    curve_x = (mpi >> coord_bits) & bitmask
+    curve_y = mpi & bitmask
+    return coord_bits, (curve_x, curve_y), offset
+
+
+
+
 def get_hex_data(data, offset, byte_count):
     '''Pull the given number of bytes from data at offset and return as a
     hex-encoded string.'''

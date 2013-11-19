@@ -5,8 +5,12 @@ from .utils import PgpdumpException, crc24
 
 
 class BinaryData(object):
-    '''The base object used for extracting PGP data packets. This expects fully
-    binary data as input; such as that read from a .sig or .gpg file.'''
+
+    """A binary PGP data file
+
+    The base object used for extracting PGP data packets. This expects fully
+    binary data as input; such as that read from a .sig or .gpg file."""
+
     binary_tag_flag = 0x80
 
     def __init__(self, data):
@@ -24,7 +28,7 @@ class BinaryData(object):
         self.length = len(data)
 
     def packets(self):
-        '''A generator function returning PGP data packets.'''
+        """A generator function returning PGP data packets."""
         offset = 0
         while offset < self.length:
             total_length, packet = construct_packet(self.data, offset)
@@ -32,13 +36,17 @@ class BinaryData(object):
             yield packet
 
     def __repr__(self):
-        return "<%s: length %d>" % (
-                self.__class__.__name__, self.length)
+        return "<%s: length %d>".format(self.__class__.__name__, self.length)
 
 
 class AsciiData(BinaryData):
-    '''A wrapper class that supports ASCII-armored input. It searches for the
-    first PGP magic header and extracts the data contained within.'''
+
+    """A wrapper class to support ASCII-armored input.
+
+    It searches for the first PGP magic header and extracts the data
+    contained in that block.
+    """
+
     def __init__(self, data):
         self.original_data = data
         data = self.strip_magic(data)
@@ -49,14 +57,17 @@ class AsciiData(BinaryData):
             actual_crc = crc24(data)
             if known_crc != actual_crc:
                 raise PgpdumpException(
-                        "CRC failure: known 0x%x, actual 0x%x" % (
-                            known_crc, actual_crc))
+                    "CRC failure: known 0x%x, actual 0x%x" % (
+                        known_crc, actual_crc))
         super(AsciiData, self).__init__(data)
 
     @staticmethod
     def strip_magic(data):
-        '''Strip away the '-----BEGIN PGP SIGNATURE-----' and related cruft so
-        we can safely base64 decode the remainder.'''
+        """Strip away the magic.
+
+        Removes '-----BEGIN PGP SIGNATURE-----' and related cruft so
+        we can safely base64 decode the remainder.
+        """
         idx = 0
         magic = b'-----BEGIN PGP '
         ignore = b'-----BEGIN PGP SIGNED '
@@ -76,7 +87,7 @@ class AsciiData(BinaryData):
                 nl_idx = data.find(b'\r\n\r\n', idx)
             if nl_idx < 0:
                 raise PgpdumpException(
-                        "found magic, could not find start of data")
+                    "found magic, could not find start of data")
             # now find the end of the data.
             end_idx = data.find(b'-----', nl_idx)
             if end_idx:
@@ -87,9 +98,11 @@ class AsciiData(BinaryData):
 
     @staticmethod
     def split_data_crc(data):
-        '''The Radix-64 format appends any CRC checksum to the end of the data
-        block, in the form '=alph', where there are always 4 ASCII characters
-        correspnding to 3 digits (24 bits). Look for this special case.'''
+        """Split out a Radix-64 CRC.
+
+        If present, the Radix-64 format appends the 24-bit CRC checksum to
+        the end of the data block, in the form '=[a-z]{4}'
+        """
         # don't let newlines trip us up
         data = data.rstrip()
         # this funkyness makes it work without changes in Py2 and Py3
@@ -101,3 +114,17 @@ class AsciiData(BinaryData):
             crc = (crc[0] << 16) + (crc[1] << 8) + crc[2]
             return (data[:-5], crc)
         return (data, None)
+
+
+def dumpbuffer(buf):
+    """Dump the PGP packets from a buffer"""
+    if any(c for c in buf if 0x20 < ord(c) > 0x80):
+        return list(BinaryData(buf).packets())
+    else:
+        return list(AsciiData(buf).packets())
+
+
+def dumpfile(filename):
+    """Dump the packets from a PGP file"""
+    with open(filename, 'rb') as f:
+        return dumpbuffer(f.read())
