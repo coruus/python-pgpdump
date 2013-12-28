@@ -6,7 +6,7 @@ from .utils import PgpdumpException, crc24
 
 class BinaryData(object):
 
-    """A binary PGP data file
+    """A binary PGP data file.
 
     The base object used for extracting PGP data packets. This expects fully
     binary data as input; such as that read from a .sig or .gpg file."""
@@ -41,7 +41,7 @@ class BinaryData(object):
 
 class AsciiData(BinaryData):
 
-    """A wrapper class to support ASCII-armored input.
+    """Wraps `BinaryData` to support ASCII-armored input.
 
     It searches for the first PGP magic header and extracts the data
     contained in that block.
@@ -86,8 +86,8 @@ class AsciiData(BinaryData):
             if nl_idx < 0:
                 nl_idx = data.find(b'\r\n\r\n', idx)
             if nl_idx < 0:
-                raise PgpdumpException(
-                    "found magic, could not find start of data")
+                raise PgpdumpException("Found magic, could not find start "
+                                       "of data")
             # now find the end of the data.
             end_idx = data.find(b'-----', nl_idx)
             if end_idx:
@@ -114,17 +114,3 @@ class AsciiData(BinaryData):
             crc = (crc[0] << 16) + (crc[1] << 8) + crc[2]
             return (data[:-5], crc)
         return (data, None)
-
-
-def dumpbuffer(buf):
-    """Dump the PGP packets from a buffer"""
-    if any(c for c in buf if 0x20 < ord(c) > 0x80):
-        return list(BinaryData(buf).packets())
-    else:
-        return list(AsciiData(buf).packets())
-
-
-def dumpfile(filename):
-    """Dump the packets from a PGP file"""
-    with open(filename, 'rb') as f:
-        return dumpbuffer(f.read())

@@ -150,3 +150,8 @@ def same_key(key_a, key_b):
         return key_b.endswith(key_a)
     else:
         return key_a.endswith(key_b)
+
+
+def format_keyid(number):
+    """Format a long keyid from a long number"""
+    return '{:#018x}'.format(0xffffffffffffffff & number)

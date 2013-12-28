@@ -30,7 +30,21 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-__version__ = "1.4"
-__author__  = "Dan McGee"
+__version__ = "1.5"
+__author__ = "Dan McGee"
 
-from .data import AsciiData, BinaryData
+from pgpdump.data import AsciiData, BinaryData
+
+
+def dumpbuffer(buf):
+    """Dump the PGP packets from a buffer"""
+    if any(c for c in buf if 0x20 < ord(c) > 0x80):
+        return list(BinaryData(buf).packets())
+    else:
+        return list(AsciiData(buf).packets())
+
+
+def dumpfile(filename):
+    """Dump the packets from a PGP file"""
+    with open(filename, 'rb') as f:
+        return dumpbuffer(f.read())
