@@ -2,8 +2,8 @@ from datetime import datetime, timedelta
 import hashlib
 import re
 
-from .utils import (PgpdumpException, get_int2, get_int4, get_mpi,
-                    get_M, get_key_id, get_hex_data, get_int_bytes)
+from pgpdump.utils import (PgpdumpException, format_keyid, get_int2,
+    get_int4, get_mpi, get_M, get_key_id, get_hex_data, get_int_bytes)
 
 
 class Packet(object):
@@ -273,14 +273,14 @@ class SignaturePacket(Packet, AlgoLookup):
 
             sub_data = self.data[offset:offset + sub_len]
             if len(sub_data) != sub_len:
-                raise PgpdumpException(
-                        "Unexpected subpackets length: expected %d, got %d" % (
-                            sub_len, len(sub_data)))
+                raise PgpdumpException("Unexpected subpackets length: "
+                                       "expected {}, got {}"
+                                       .format(sub_len, len(sub_data)))
             subpacket = SignatureSubpacket(subtype, hashed, sub_data)
             if subpacket.subtype == 2:
                 self.raw_creation_time = get_int4(subpacket.data, 0)
                 self.creation_time = datetime.utcfromtimestamp(
-                        self.raw_creation_time)
+                    self.raw_creation_time)
             elif subpacket.subtype == 3:
                 self.raw_expiration_time = get_int4(subpacket.data, 0)
             elif subpacket.subtype == 16:
@@ -375,7 +375,7 @@ class PublicKeyPacket(Packet, AlgoLookup):
             md5 = hashlib.md5()
             # Key type must be RSA for v2 and v3 public keys
             if self.pub_algorithm_type == "rsa":
-                key_id = ('%X' % self.modulus)[-8:].zfill(8)
+                key_id = format_keyid(self.modulus)
                 self.key_id = key_id.encode('ascii')
                 md5.update(get_int_bytes(self.modulus))
                 md5.update(get_int_bytes(self.exponent))
@@ -383,25 +383,25 @@ class PublicKeyPacket(Packet, AlgoLookup):
                 # Of course, there are ELG keys in the wild too. This formula
                 # for calculating key_id and fingerprint is derived from an old
                 # key and there is a test case based on it.
-                key_id = ('%X' % self.prime)[-8:].zfill(8)
+                key_id = format_keyid(self.prime)
                 self.key_id = key_id.encode('ascii')
                 md5.update(get_int_bytes(self.prime))
                 md5.update(get_int_bytes(self.group_gen))
             else:
-                raise PgpdumpException("Invalid non-RSA v%d public key" %
-                        self.pubkey_version)
-            self.fingerprint = md5.hexdigest().upper().encode('ascii')
+                raise PgpdumpException("Invalid non-RSA v{} public key"
+                                       .format(self.pubkey_version))
+            self.fingerprint = md5.hexdigest().lower().encode('ascii')
         elif self.pubkey_version == 4:
             sha1 = hashlib.sha1()
             seed_bytes = (0x99, (self.length >> 8) & 0xff, self.length & 0xff)
             sha1.update(bytearray(seed_bytes))
             sha1.update(self.data)
-            self.fingerprint = sha1.hexdigest().upper().encode('ascii')
+            self.fingerprint = sha1.hexdigest().lower().encode('ascii')
             self.key_id = self.fingerprint[24:]
 
             self.raw_creation_time = get_int4(self.data, offset)
             self.creation_time = datetime.utcfromtimestamp(
-                    self.raw_creation_time)
+                self.raw_creation_time)
             offset += 4
 
             self.raw_pub_algorithm = self.data[offset]
@@ -409,8 +409,8 @@ class PublicKeyPacket(Packet, AlgoLookup):
 
             offset = self.parse_key_material(offset)
         else:
-            raise PgpdumpException("Unsupported public key packet, version %d" %
-                    self.pubkey_version)
+            raise PgpdumpException("Unsupported public key packet, "
+                                   "version {}".format(self.pubkey_version))
 
         return offset
 
@@ -437,7 +437,7 @@ class PublicKeyPacket(Packet, AlgoLookup):
             oid_len = self.data[offset]
             offset += 1
             self.raw_curve_oid = self.data[offset:offset + oid_len]
-            self.curve_oid =
+            #self.curve_oid =
             offset += oid_len
             self.curve_size, (self.curve_x, self.curve_y), offset = \
                 get_M(self.data, offset)
@@ -446,8 +446,8 @@ class PublicKeyPacket(Packet, AlgoLookup):
             # Private/Experimental algorithms, just move on
             pass
         else:
-            raise PgpdumpException("Unsupported public key algorithm %d" %
-                    self.raw_pub_algorithm)
+            raise PgpdumpException("Unsupported public key algorithm {}"
+                                   .format(self.raw_pub_algorithm))
 
         return offset
 
@@ -462,8 +462,9 @@ class PublicKeyPacket(Packet, AlgoLookup):
 
 
 class PublicSubkeyPacket(PublicKeyPacket):
-    '''A Public-Subkey packet (tag 14) has exactly the same format as a
-    Public-Key packet, but denotes a subkey.'''
+    """A Public-Subkey packet (tag 14) has exactly the same format as a
+       Public-Key packet, but denotes a subkey.
+    """
     pass
 
 
@@ -635,22 +636,29 @@ class SecretKeyPacket(PublicKeyPacket):
             # Private/Experimental algorithms, just move on
             pass
         else:
-            raise PgpdumpException("Unsupported public key algorithm %d" %
-                    self.raw_pub_algorithm)
+            raise PgpdumpException("Unsupported public key algorithm {}"
+                                   .format(self.raw_pub_algorithm))
 
         return offset
 
 
 class SecretSubkeyPacket(SecretKeyPacket):
-    '''A Secret-Subkey packet (tag 7) has exactly the same format as a
-    Secret-Key packet, but denotes a subkey.'''
+    """A Secret-Subkey packet (tag 7).
+
+    It has exactly the same format as a Secret-Key packet, but denotes a
+    subkey."""
     pass
 
 
 class UserIDPacket(Packet):
-    '''A User ID packet consists of UTF-8 text that is intended to represent
-    the name and email address of the key holder. By convention, it includes an
-    RFC 2822 mail name-addr, but there are no restrictions on its content.'''
+
+    """A User ID packet.
+
+    User ID packets consist of UTF-8 text intended to represent the name and
+    email address of the key holder. By convention, it includes an RFC 2822
+    mail name-addr, but there are no restrictions on its content.
+    """
+
     def __init__(self, *args, **kwargs):
         self.user = None
         self.user_name = None
@@ -714,13 +722,17 @@ class UserAttributePacket(Packet):
 
 
 class TrustPacket(Packet):
+
     def __init__(self, *args, **kwargs):
         self.trust = None
         super(TrustPacket, self).__init__(*args, **kwargs)
 
     def parse(self):
-        '''GnuPG public keyrings use a 2-byte trust value that appears to be
-        integer values into some internal enumeration.'''
+        """GnuPG public keyrings use a 2-byte trust value that appears to be
+        integer values into some internal enumeration.
+
+        TODO(dlg): add trust-parsing
+        """
         if self.length == 2:
             self.trust = get_int2(self.data, 0)
             return 2
@@ -728,6 +740,7 @@ class TrustPacket(Packet):
 
 
 class PublicKeyEncryptedSessionKeyPacket(Packet, AlgoLookup):
+
     def __init__(self, *args, **kwargs):
         self.session_key_version = None
         self.key_id = None
